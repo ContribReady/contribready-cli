@@ -30,5 +30,6 @@ jobs:
           cache: npm
           cache-dependency-path: contribready-cli/package-lock.json
       - run: npm ci --prefix contribready-cli
+      - run: npm ci --prefix contribready-core
       - run: npm run build --prefix contribready-core
       - run: npm run verify --prefix contribready-cli
