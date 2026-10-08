@@ -16,16 +16,19 @@ jobs:
         node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: contribready-cli
       - name: Check out the compatible Core repository
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/contribready-core
-          path: ../contribready-core
+          path: contribready-core
           ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
-      - run: npm run build --prefix ../contribready-core
-      - run: npm run verify
+          cache-dependency-path: contribready-cli/package-lock.json
+      - run: npm ci --prefix contribready-cli
+      - run: npm run build --prefix contribready-core
+      - run: npm run verify --prefix contribready-cli

@@ -2,11 +2,17 @@
   <img src="assets/banner.svg" alt="ContribReady CLI — safe repository audits from the command line" width="100%" />
 </div>
 
+<div align="center">
+  <a href="https://github.com/ContribReady/contribready-cli/actions/workflows/ci.yml"><img src="https://github.com/ContribReady/contribready-cli/actions/workflows/ci.yml/badge.svg?branch=main" alt="CLI CI" /></a>
+  <a href="https://github.com/ContribReady/contribready"><img src="https://img.shields.io/badge/Product-ContribReady-16a085" alt="ContribReady product repository" /></a>
+  <a href="https://github.com/ContribReady/contribready-core"><img src="https://img.shields.io/badge/Engine-Core-6875f5" alt="ContribReady Core repository" /></a>
+</div>
+
 # @contribready/cli
 
 The user-facing `contribready` command. It owns argument parsing, safe local filesystem discovery, terminal/JSON output, exit codes, and the optional GitHub adapter while consuming `@contribready/core`.
 
-GitHub retrieval belongs under `src/github`; it ships with the CLI because it is currently a CLI integration rather than an independently reusable package. Core remains independent. Product-level architecture and release coordination live in the main `contribready` repository.
+GitHub retrieval belongs under `src/github`; it ships with the CLI because it is currently a CLI integration rather than an independently reusable package. Core remains independent in [`contribready-core`](https://github.com/ContribReady/contribready-core). Product-level architecture and release coordination live in the main [`contribready`](https://github.com/ContribReady/contribready) repository.
 
 ## Quick start
 
