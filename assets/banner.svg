@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">ContribReady CLI</title><desc id="desc">Safe repository audits from the command line.</desc>
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101827"/><stop offset="1" stop-color="#164b48"/></linearGradient><linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#62e6b5"/><stop offset="1" stop-color="#f5c86b"/></linearGradient></defs>
+  <rect width="1200" height="300" rx="28" fill="url(#bg)"/><circle cx="1080" cy="235" r="250" fill="#62e6b5" opacity=".11"/>
+  <rect x="850" y="72" width="260" height="156" rx="16" fill="#0a111d" stroke="#62e6b5" stroke-width="3"/><path d="M885 125l24 20-24 20M935 169h74" fill="none" stroke="url(#accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="76" y="126" fill="#f4f8fb" font-family="Segoe UI,Arial,sans-serif" font-size="54" font-weight="700">ContribReady CLI</text><text x="80" y="180" fill="#b9d8d2" font-family="Segoe UI,Arial,sans-serif" font-size="25">Safe repository audits from the command line.</text><text x="80" y="228" fill="#62e6b5" font-family="Segoe UI,Arial,sans-serif" font-size="18" font-weight="600">LOCAL-FIRST  •  BOUNDED  •  ACTIONABLE</text>
+</svg>
