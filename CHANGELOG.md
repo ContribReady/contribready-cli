@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Corrected the quick start to reflect unpublished npm packages and document source checkout; fixed the cross-repository security link and linked support questions to the enabled issue tracker.
 - Completed Phase 2 CLI foundation: `audit`, `issue`, help/version, text/JSON output, strict mode, bounded local input handling, structured errors, and deterministic tests.
 - Completed Phase 3 recursive bounded evidence discovery for documentation, manifests, lockfiles, workflows, tests, templates, and policies.
 - Integrated Phase 4 setup-readiness findings into CLI audit reports.
