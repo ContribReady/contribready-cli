@@ -16,11 +16,19 @@ GitHub retrieval belongs under `src/github`; it ships with the CLI because it is
 
 ## Quick start
 
+The npm packages are not published yet, so the `npx` package-install route is not currently available. To run from source, check out `contribready-core` and `contribready-cli` as sibling directories, then run from their common parent:
+
 ```bash
-npx @contribready/cli audit ./repository
-npx @contribready/cli audit ./repository --format json
-npx @contribready/cli issue ./issue.md --strict
+npm ci --prefix contribready-core
+npm ci --prefix contribready-cli
+npm run build --prefix contribready-core
+npm run build --prefix contribready-cli
+node contribready-cli/dist/index.js audit ./repository
+node contribready-cli/dist/index.js audit ./repository --format json
+node contribready-cli/dist/index.js issue ./issue.md --strict
 ```
+
+The CLI checkout expects the Core checkout at `../contribready-core`; Core is built before the CLI so its local package link resolves correctly. Once both packages are published, the standard `npx @contribready/cli ...` instructions can replace these source-checkout steps.
 
 The default audit is local-first and static: it reads bounded contributor-facing evidence and does not run the target repository, install its dependencies, or contact GitHub.
 
@@ -58,6 +66,6 @@ Phase 10 hardens local and remote inputs: terminal control characters are remove
 
 Phase 15 adds opt-in SARIF 2.1.0 output with stable rule IDs and error/warning/note mappings. It also normalizes safe GitHub issue metadata without changing readiness rules. Local and remote audits remain static; no target execution is introduced.
 
-For local development, build `../contribready-core` first and install/link that local package into this repository. Published development will use the versioned `@contribready/core` release.
+For local development, use the sibling checkout instructions above. The published package flow is not yet available because neither `@contribready/core` nor `@contribready/cli` is published.
 
 The v0.1 compatibility target is Node.js 20, 22, and 24 on Ubuntu, Windows, and macOS. `npm ci && npm run verify` performs lint/typecheck, build/tests, and package dry-run. Before Core is published, local development and source CI must provide the compatible sibling Core repository at `../contribready-core`; the release process publishes Core before CLI. After publication, the CLI resolves the declared Core version from the package registry.
