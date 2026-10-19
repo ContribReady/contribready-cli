@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: contribready-cli
-      - name: Check out the Core release candidate
+      - name: Check out Core main
         uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/contribready-core
