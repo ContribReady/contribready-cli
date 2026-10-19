@@ -3,9 +3,26 @@
   "version": "0.1.0",
   "description": "CLI for ContribReady contributor-readiness audits",
   "type": "module",
-  "bin": { "contribready": "dist/index.js" },
-  "scripts": { "build": "tsc -p tsconfig.json", "lint": "tsc -p tsconfig.json --noEmit", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "npm run build && node --test", "pack:check": "npm pack --dry-run --cache .npm-cache", "verify": "npm run lint && npm test && npm run pack:check" },
-  "dependencies": { "@contribready/core": "0.1.0" },
-  "devDependencies": { "typescript": "^5.0.0" },
+  "bin": {
+    "contribready": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test",
+    "test:package": "npm run build && node --test test/package-install.test.mjs",
+    "pack:check": "npm pack --dry-run --cache .npm-cache",
+    "verify": "npm run lint && npm test && npm run pack:check"
+  },
+  "dependencies": {
+    "@contribready/core": "0.1.0"
+  },
+  "devDependencies": {
+    "ajv": "8.17.1",
+    "ajv-draft-04": "1.0.0",
+    "ajv-formats": "3.0.1",
+    "typescript": "^5.0.0"
+  },
   "license": "MIT"
 }

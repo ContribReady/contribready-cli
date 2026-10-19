@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: contribready-cli
-      - name: Check out the compatible Core repository
+      - name: Check out Core main
         uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/contribready-core
@@ -29,7 +29,16 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: contribready-cli/package-lock.json
-      - run: npm ci --prefix contribready-cli
-      - run: npm ci --prefix contribready-core
-      - run: npm run build --prefix contribready-core
-      - run: npm run verify --prefix contribready-cli
+      - name: Install Core development dependencies
+        run: npm ci --prefix contribready-core --ignore-scripts --no-audit --no-fund
+      - name: Verify Core
+        run: npm run verify --prefix contribready-core
+      - name: Pack Core for a local release simulation
+        working-directory: contribready-core
+        run: npm pack --pack-destination ..
+      - name: Install CLI and its packed Core dependency from local artifacts
+        working-directory: contribready-cli
+        run: npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund ../contribready-core-0.1.0.tgz
+      - name: Verify CLI against the packed Core artifact
+        working-directory: contribready-cli
+        run: npm run verify

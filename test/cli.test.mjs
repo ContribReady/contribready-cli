@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { closeSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../dist/index.js";
 import { renderReport } from "../dist/output.js";
+import { readBoundedFile } from "../dist/bounded-file.js";
 
 function invoke(args) {
   const out = [];
@@ -32,8 +33,43 @@ test("audit emits deterministic JSON without executing repository code", () => {
   assert.equal(result.stdout, repeated.stdout);
   const report = JSON.parse(result.stdout);
   assert.equal(report.subject, "repository");
-  assert.equal(report.score.percentage, 81);
+  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.score.percentage, 100);
+  assert.equal(report.score.coveragePercentage < 100, true);
   assert.equal(report.findings.length, 14);
+});
+
+test("runtime conflicts stay unknown and text distinguishes assessed from unassessed checks", () => {
+  const conflictingRoot = mkdtempSync(join(tmpdir(), "contribready-runtime-conflict-"));
+  writeFileSync(join(conflictingRoot, "README.md"), "Install with Node.js 20.");
+  writeFileSync(join(conflictingRoot, "CONTRIBUTING.md"), "Use Node.js 18 to run the checks.");
+
+  const json = JSON.parse(invoke(["audit", conflictingRoot, "--format", "json"]).stdout);
+  const setup = json.findings.find((finding) => finding.rule.id === "CR-SETUP-002");
+  assert.equal(setup.outcome, "unknown");
+  assert.equal(setup.conflictsAssessed, true);
+  assert.deepEqual(setup.conflictingEvidence.map((item) => [item.source, item.details.version]), [
+    ["CONTRIBUTING.md", "18"],
+    ["README.md", "20"],
+  ]);
+
+  const conflictText = invoke(["audit", conflictingRoot, "--format", "text"]).stdout;
+  assert.match(conflictText, /Conflicting evidence: CONTRIBUTING\.md, README\.md/);
+
+  const conflictSarif = JSON.parse(invoke(["audit", conflictingRoot, "--format", "sarif"]).stdout);
+  const sarifSetup = conflictSarif.runs[0].results.find((finding) => finding.ruleId === "CR-SETUP-002");
+  assert.equal(sarifSetup.properties.outcome, "unknown");
+  assert.equal(sarifSetup.properties.conflictsAssessed, true);
+  assert.deepEqual(sarifSetup.properties.conflictingEvidence.map((item) => [item.source, item.details.version]), [
+    ["CONTRIBUTING.md", "18"],
+    ["README.md", "20"],
+  ]);
+
+  const consistentRoot = mkdtempSync(join(tmpdir(), "contribready-runtime-consistent-"));
+  writeFileSync(join(consistentRoot, "README.md"), "Install with Node.js 20.");
+  writeFileSync(join(consistentRoot, "CONTRIBUTING.md"), "Use Node.js 20 to run the checks.");
+  const consistentText = invoke(["audit", consistentRoot, "--format", "text"]).stdout;
+  assert.match(consistentText, /Conflicts: assessed; no incompatible claims detected by this rule/);
 });
 
 test("audit discovers evidence files and skips source/dependency/build directories", () => {
@@ -72,6 +108,115 @@ test("audit skips oversized evidence files instead of reading them", () => {
   assert.equal(report.metadata.skippedFiles, "1");
 });
 
+test("local Markdown accepts the exact per-file UTF-8 byte limit and replaces malformed UTF-8 safely", () => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-file-boundary-"));
+  const docs = join(root, "docs");
+  mkdirSync(docs);
+  writeFileSync(join(docs, "at-limit.md"), "x".repeat(256 * 1024));
+  writeFileSync(join(docs, "invalid-utf8.md"), Buffer.from([0x52, 0xff, 0x50]));
+  const output = invoke(["audit", root, "--format", "json"]);
+  assert.equal(output.code, 0);
+  const report = JSON.parse(output.stdout);
+  assert.equal(report.evidence.some((file) => file.path === "docs/at-limit.md" && Number(file.bytes) === 256 * 1024), true);
+  assert.equal(report.evidence.some((file) => file.path === "docs/invalid-utf8.md"), true);
+  assert.doesNotMatch(output.stdout, /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+});
+
+test("bounded file reader rejects a file replaced between lstat and open before reading bytes", () => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-file-race-"));
+  const path = join(root, "README.md");
+  const replacement = join(root, "replacement.md");
+  const original = join(root, "original.md");
+  writeFileSync(path, "in-root file");
+  writeFileSync(replacement, "replacement file");
+  const operations = {
+    lstat: lstatSync,
+    open: (file, flags) => {
+      renameSync(file, original);
+      renameSync(replacement, file);
+      return openSync(file, flags);
+    },
+    fstat: fstatSync,
+    read: () => { throw new Error("reader must not consume a replaced file"); },
+    close: closeSync,
+  };
+  assert.equal(readBoundedFile(path, 64, operations), undefined);
+});
+
+test("hostile Unicode, percent, and spacing in filenames stay inert and SARIF-encoded", () => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-hostile-name-"));
+  const docs = join(root, "docs");
+  mkdirSync(docs);
+  const name = "guide 雪% name.md";
+  writeFileSync(join(docs, name), "Node.js 20. Run npm ci. Run npm test.");
+  const result = invoke(["audit", root, "--format", "sarif"]);
+  assert.equal(result.code, 0);
+  const sarif = JSON.parse(result.stdout);
+  const locations = sarif.runs[0].results.flatMap((finding) => finding.locations ?? []);
+  assert.equal(locations.some((location) => location.physicalLocation.artifactLocation.uri === "docs/guide%20%E9%9B%AA%25%20name.md"), true);
+});
+
+test("repository byte limits count UTF-8 bytes rather than UTF-16 code units", () => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-unicode-bytes-"));
+  const docs = join(root, "docs");
+  mkdirSync(docs);
+  const multibyte = "é".repeat(128 * 1024);
+  for (let index = 0; index < 40; index += 1) writeFileSync(join(docs, `guide-${String(index).padStart(2, "0")}.md`), multibyte);
+  const result = invoke(["audit", root, "--format", "json"]);
+  const report = JSON.parse(result.stdout);
+  assert.equal(Number(report.metadata.bytesRead), 8 * 1024 * 1024);
+  assert.equal(report.evidence.length, 32);
+  assert.equal(report.metadata.truncated, "true");
+});
+
+test("local repository traversal does not follow symlinked directories", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-symlink-root-"));
+  const outside = mkdtempSync(join(tmpdir(), "contribready-symlink-outside-"));
+  writeFileSync(join(outside, "README.md"), "outside evidence must not be read");
+  try { symlinkSync(outside, join(root, "linked"), "junction"); }
+  catch { t.skip("directory symlinks are unavailable on this platform/account"); return; }
+  const report = JSON.parse(invoke(["audit", root, "--format", "json"]).stdout);
+  assert.equal(report.evidence.some((file) => file.path.includes("linked")), false);
+  assert.equal(report.metadata.skippedFiles, "1");
+});
+
+test("local repository traversal skips symlinked files outside the selected root", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-file-link-root-"));
+  const outside = mkdtempSync(join(tmpdir(), "contribready-file-link-outside-"));
+  const outsideReadme = join(outside, "outside.md");
+  writeFileSync(outsideReadme, "Node.js 20. Run npm ci and npm test.");
+  try { symlinkSync(outsideReadme, join(root, "README.md"), "file"); }
+  catch { t.skip("file symlinks are unavailable on this platform/account"); return; }
+  const report = JSON.parse(invoke(["audit", root, "--format", "json"]).stdout);
+  assert.equal(report.evidence.some((file) => file.path === "README.md"), false);
+});
+
+test("local traversal marks excessive depth and file count as truncated", () => {
+  const deepRoot = mkdtempSync(join(tmpdir(), "contribready-depth-limit-"));
+  let deep = deepRoot;
+  for (let index = 0; index < 10; index += 1) { deep = join(deep, `d${index}`); mkdirSync(deep); }
+  writeFileSync(join(deep, "README.md"), "deep evidence");
+  const deepReport = JSON.parse(invoke(["audit", deepRoot, "--format", "json"]).stdout);
+  assert.equal(deepReport.metadata.truncated, "true");
+  assert.equal(deepReport.evidence.some((file) => file.path.endsWith("README.md")), false);
+
+  const countRoot = mkdtempSync(join(tmpdir(), "contribready-count-limit-"));
+  const docs = join(countRoot, "docs");
+  mkdirSync(docs);
+  for (let index = 0; index < 520; index += 1) writeFileSync(join(docs, `guide-${String(index).padStart(3, "0")}.md`), "guide");
+  const countReport = JSON.parse(invoke(["audit", countRoot, "--format", "json"]).stdout);
+  assert.equal(countReport.metadata.truncated, "true");
+  assert.equal(countReport.evidence.length <= 512, true);
+});
+
+test("local traversal stops after the maximum directory entry count", () => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-entry-limit-"));
+  for (let index = 0; index < 8200; index += 1) writeFileSync(join(root, `entry-${String(index).padStart(5, "0")}.bin`), "x");
+  const report = JSON.parse(invoke(["audit", root, "--format", "json"]).stdout);
+  assert.equal(report.metadata.truncated, "true");
+  assert.equal(report.metadata.discoveredFiles, "0");
+});
+
 test("strict audit returns a finding exit code", () => {
   const root = mkdtempSync(join(tmpdir(), "contribready-empty-"));
   const result = invoke(["audit", root, "--strict"]);
@@ -89,7 +234,8 @@ test("issue command reads bounded Markdown and preserves the title", () => {
   assert.equal(report.subject, "issue");
   assert.equal(report.title, "Reproducible setup failure");
   assert.equal(report.findings.length, 6);
-  assert.equal(report.score.percentage, 33);
+  assert.equal(report.score.percentage < 100, true);
+  assert.equal(report.score.coveragePercentage, 100);
   assert.equal(invoke(["issue", issue, "--strict"]).code, 1);
 });
 
@@ -104,7 +250,9 @@ Steps to reproduce:
 1. Run npm test.
 2. Use the empty fixture.
 
-Expected behavior: return an empty result. Actual behavior: the parser crashes.
+Expected behavior: return an empty result for empty input.
+
+Actual behavior: the parser crashes for empty input.
 
 Affected module: src/parser.
 
@@ -112,7 +260,9 @@ Acceptance criteria:
 - The empty fixture returns an empty result.
 - Existing inputs remain unchanged.
 
-Definition of done: tests pass and documentation is updated.
+Definition of done:
+- The regression test passes.
+- Documentation is updated.
 `);
   const result = invoke(["issue", issue, "--format", "json", "--strict"]);
   assert.equal(result.code, 0);
@@ -131,13 +281,14 @@ test("invalid input returns a usage/input error without a stack trace", () => {
 test("human output strips terminal control characters from untrusted report text", () => {
   const report = {
     subject: "issue",
-    findings: [{ outcome: "fail", rule: { id: "CR-ISSUE-001" }, message: "Bad\u001b[31m\nInjected", evidence: [{ source: "file\u001b[2J" }], recommendation: "Fix it" }],
-    score: { percentage: 0 },
+    findings: [{ outcome: "fail", rule: { id: "CR-ISSUE-001", area: "issue", severity: "medium", version: 1, falsePositiveConsiderations: [], falseNegativeLimitations: ["heuristic limitation"] }, message: "Bad\u001b[31m\nInjected", evidence: [{ source: "file\u001b[2J" }], evidenceMissing: ["steps"], conflictingEvidence: [], conflictsAssessed: false, recommendation: "Fix it" }],
+    score: { percentage: 0, coveragePercentage: 100 },
     recommendations: [{ priority: "high", ruleId: "CR-ISSUE-001", text: "Fix it" }],
   };
   const output = renderReport(report, "text", "https://github.com/acme/project/issues/1");
   assert.doesNotMatch(output, /\u001b/);
   assert.match(output, /Bad Injected/);
+  assert.match(output, /Determinate coverage: 100%/);
 });
 
 test("SARIF output is stable and maps findings to rules and levels", () => {
@@ -151,4 +302,32 @@ test("SARIF output is stable and maps findings to rules and levels", () => {
   assert.equal(sarif.runs[0].tool.driver.name, "ContribReady");
   assert.equal(sarif.runs[0].results.some((item) => item.level === "error" && item.ruleId === "CR-CONTRIB-001"), true);
   assert.equal(sarif.runs[0].results.some((item) => item.level === "warning"), true);
+});
+
+test("SARIF encodes hostile relative artifact paths as URIs", () => {
+  const report = {
+    subject: "repository",
+    findings: [{ outcome: "fail", rule: { id: "CR-TEST-001", name: "Test", purpose: "purpose", area: "testing", severity: "medium", version: 1, falsePositiveConsiderations: [], falseNegativeLimitations: [] }, message: "missing", evidence: [{ source: "docs/odd name\nfile.md" }], evidenceMissing: [], conflictingEvidence: [], conflictsAssessed: false, recommendation: "add instructions" }],
+    score: { percentage: 0, coveragePercentage: 100 },
+    recommendations: [],
+  };
+  const sarif = JSON.parse(renderReport(report, "sarif", "local"));
+  assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, "docs/odd%20name%0Afile.md");
+});
+
+test("SARIF encodes Windows, Unicode, percent, and control characters as valid artifact URIs", () => {
+  for (const [source, expected] of [
+    ["C:\\repo\\docs\\guide space.md", "file:///C:/repo/docs/guide%20space.md"],
+    ["docs/雪% guide.md", "docs/%E9%9B%AA%25%20guide.md"],
+    ["/repo/docs/tab\tname.md", "file:///repo/docs/tab%09name.md"],
+  ]) {
+    const report = {
+      subject: "repository",
+      findings: [{ outcome: "fail", rule: { id: "CR-TEST-001", name: "Test", purpose: "purpose", area: "testing", severity: "medium", version: 1, falsePositiveConsiderations: [], falseNegativeLimitations: [] }, message: "missing", evidence: [{ source }], evidenceMissing: [], conflictingEvidence: [], conflictsAssessed: false, recommendation: "add instructions" }],
+      score: { percentage: 0, coveragePercentage: 100 },
+      recommendations: [],
+    };
+    const sarif = JSON.parse(renderReport(report, "sarif", "local"));
+    assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, expected);
+  }
 });

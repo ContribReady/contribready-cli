@@ -20,15 +20,16 @@ The npm packages are not published yet, so the `npx` package-install route is no
 
 ```bash
 npm ci --prefix contribready-core
-npm ci --prefix contribready-cli
 npm run build --prefix contribready-core
+npm pack ./contribready-core --pack-destination .
+npm install --prefix contribready-cli --no-save --package-lock=false --ignore-scripts --no-audit --no-fund ./contribready-core-0.1.0.tgz
 npm run build --prefix contribready-cli
 node contribready-cli/dist/index.js audit ./repository
 node contribready-cli/dist/index.js audit ./repository --format json
 node contribready-cli/dist/index.js issue ./issue.md --strict
 ```
 
-The CLI checkout expects the Core checkout at `../contribready-core`; Core is built before the CLI so its local package link resolves correctly. Once both packages are published, the standard `npx @contribready/cli ...` instructions can replace these source-checkout steps.
+The Core package is not published, so `npm ci` in the CLI checkout cannot resolve it yet. Pack Core locally and install that tarball into the CLI checkout as shown above; this mirrors the release-candidate CI path without publishing. Once both packages are published, the standard `npx @contribready/cli ...` instructions can replace these source-checkout steps.
 
 The default audit is local-first and static: it reads bounded contributor-facing evidence and does not run the target repository, install its dependencies, or contact GitHub.
 
@@ -58,14 +59,16 @@ Phase 6 applies contribution rules for CONTRIBUTING.md, pull-request workflow, r
 
 Phase 7 applies six local Markdown issue-readiness rules. `issue --strict` returns exit code `1` when the issue is missing required actionable evidence.
 
-Phase 8 reports scoring version, category breakdowns, unknown/not-applicable counts, and deterministic prioritized recommendations from Core. The CLI does not recalculate scores.
+Phase 8 reports scoring version 2, category breakdowns, determinate coverage, unknown/not-applicable counts, and deterministic prioritized recommendations from Core. The CLI does not recalculate scores. Read the percentage together with coverage: it is only the result produced by documented rules against available evidence, not an objective repository-quality or contributor-success metric.
 
 Phase 9 adds opt-in GitHub retrieval for canonical HTTPS repository and issue URLs. Local paths never contact GitHub. Remote requests use the GitHub REST API, an optional `GITHUB_TOKEN`, bounded tree/blob selection, a ten-second request timeout, and stable errors for authentication, private/unavailable resources, rate limits, and network failures. Tokens are sent only in request headers and are never included in reports or error messages. GitHub remains a CLI adapter; it is not a separate repository.
 
-Phase 10 hardens local and remote inputs: terminal control characters are removed from human output, local/remote size limits are enforced, oversized credentials are rejected, redirects are refused, and security abuse cases are covered by tests.
+Phase 10 hardens local and remote inputs: local resource accounting uses UTF-8 bytes and bounded directory enumeration; remote response bodies are byte-bounded before parsing; canonical GitHub URLs, redirect refusal, token bounds, terminal-control sanitization, and stable errors are tested. The proposal keeps one deadline active through response-body consumption and cancels stalled readers; `lstat` checks prevent following links and Windows junctions. The proposal CI matrix passed Node 20/22/24 on Ubuntu, Windows, and macOS. A file-symlink test skips where link creation is unavailable; file-replacement races and unusual reparse-point behavior remain unverified.
 
-Phase 15 adds opt-in SARIF 2.1.0 output with stable rule IDs and error/warning/note mappings. It also normalizes safe GitHub issue metadata without changing readiness rules. Local and remote audits remain static; no target execution is introduced.
+Phase 15 adds opt-in SARIF 2.1.0 output with stable rule IDs and error/warning/note mappings. The proposed remediation validates generated SARIF—including error output—against the vendored OASIS Errata 01 schema offline. It also normalizes safe GitHub issue metadata without changing readiness rules. Local and remote audits remain static; no target execution is introduced.
+
+The 2026-10-19 review branches add a 25-case synthetic product evaluation matrix in the main repository and regression tests for deadline, resource, encoding, and output-schema boundaries. The Node/OS matrix passed, but these authored expectations are not external calibration and do not establish false-positive/false-negative rates.
 
 For local development, use the sibling checkout instructions above. The published package flow is not yet available because neither `@contribready/core` nor `@contribready/cli` is published.
 
-The v0.1 compatibility target is Node.js 20, 22, and 24 on Ubuntu, Windows, and macOS. `npm ci && npm run verify` performs lint/typecheck, build/tests, and package dry-run. Before Core is published, local development and source CI must provide the compatible sibling Core repository at `../contribready-core`; the release process publishes Core before CLI. After publication, the CLI resolves the declared Core version from the package registry.
+The v0.1 compatibility target is Node.js 20, 22, and 24 on Ubuntu, Windows, and macOS. `npm ci && npm run verify` performs lint/typecheck, build/tests, and package dry-run. The verification suite also packs the CLI, installs it with the sibling Core tarball into an isolated temporary consumer in offline mode with lifecycle scripts disabled, and exercises the installed executable's text, JSON, SARIF, issue, and strict-exit behavior. This validates local tarball compatibility, not a public npm registry install. Before Core is published, local development and source CI must provide the compatible sibling Core repository at `../contribready-core`; the release process publishes Core before CLI. After publication, the CLI resolves the declared Core version from the package registry.

@@ -11,6 +11,13 @@ function terminalText(value: unknown): string {
 }
 
 function sarifLevel(outcome: string): "error" | "warning" | "note" { return outcome === "fail" ? "error" : outcome === "unknown" ? "warning" : "note"; }
+function sarifUri(path: string): string {
+  const normalized = path.replaceAll("\\", "/");
+  const windows = normalized.match(/^([A-Za-z]):\/(.*)$/);
+  if (windows) return `file:///${windows[1]}:/${windows[2].split("/").map(encodeURIComponent).join("/")}`;
+  const encoded = normalized.split("/").map(encodeURIComponent).join("/");
+  return normalized.startsWith("/") ? `file://${encoded}` : encoded;
+}
 
 export function renderSarif(report: Report, input: string, extra: Record<string, unknown> = {}): string {
   const rules = report.findings.map((finding) => ({
@@ -19,7 +26,7 @@ export function renderSarif(report: Report, input: string, extra: Record<string,
     shortDescription: { text: finding.rule.name },
     fullDescription: { text: finding.rule.purpose },
     help: { text: finding.recommendation },
-    properties: { area: finding.rule.area, severity: finding.rule.severity, version: finding.rule.version },
+    properties: { area: finding.rule.area, severity: finding.rule.severity, version: finding.rule.version, falsePositiveConsiderations: finding.rule.falsePositiveConsiderations, falseNegativeLimitations: finding.rule.falseNegativeLimitations },
   }));
   const uniqueRules = [...new Map(rules.map((rule) => [rule.id, rule])).values()];
   const results = report.findings.filter((finding) => finding.outcome !== "not-applicable").map((finding) => {
@@ -28,13 +35,13 @@ export function renderSarif(report: Report, input: string, extra: Record<string,
       ruleId: finding.rule.id,
       level: sarifLevel(finding.outcome),
       message: { text: finding.message },
-      ...(path ? { locations: [{ physicalLocation: { artifactLocation: { uri: path } } }] } : {}),
-      properties: { outcome: finding.outcome, area: finding.rule.area, recommendation: finding.recommendation },
+      ...(path ? { locations: [{ physicalLocation: { artifactLocation: { uri: sarifUri(path) } } }] } : {}),
+      properties: { outcome: finding.outcome, area: finding.rule.area, recommendation: finding.recommendation, evidenceMissing: finding.evidenceMissing, conflictingEvidence: finding.conflictingEvidence, conflictsAssessed: finding.conflictsAssessed },
     };
   });
   return JSON.stringify({
     version: "2.1.0",
-    $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+    $schema: "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
     runs: [{
       tool: { driver: { name: "ContribReady", semanticVersion: "0.1.0", rules: uniqueRules } },
       results,
@@ -48,12 +55,18 @@ export function renderReport(report: Report, format: "text" | "json" | "sarif", 
   if (format === "json") return JSON.stringify(payload, null, 2);
   if (format === "sarif") return renderSarif(report, input, extra);
   const percentage = report.score.percentage === null ? "n/a" : `${report.score.percentage}%`;
+  const coverage = report.score.coveragePercentage === null ? "n/a" : `${report.score.coveragePercentage}%`;
   const evidenceFiles = Array.isArray(extra.evidence) ? extra.evidence.length : 0;
-  const lines = [`ContribReady ${terminalText(report.subject)} audit`, `Input: ${terminalText(input)}`, `Score: ${terminalText(percentage)} according to ContribReady's documented rules`, `Rules: ${report.findings.length}`, `Evidence files: ${evidenceFiles}`, ""];
+  const lines = [`ContribReady ${terminalText(report.subject)} audit`, `Input: ${terminalText(input)}`, `Score: ${terminalText(percentage)} according to ContribReady's documented rules`, `Determinate coverage: ${terminalText(coverage)} (${report.score.unknownRules} unknown, ${report.score.notApplicableRules} not applicable)`, `Rules: ${report.findings.length}`, `Evidence files: ${evidenceFiles}`, ""];
   if (report.findings.length === 0) lines.push("No rules were evaluated for this input yet.");
   for (const finding of report.findings) {
     lines.push(`${terminalText(finding.outcome.toUpperCase())} ${terminalText(finding.rule.id)}: ${terminalText(finding.message)}`);
     if (finding.evidence.length) lines.push(`  Evidence: ${finding.evidence.map((item) => terminalText(item.source)).join(", ")}`);
+    if (finding.evidenceMissing.length) lines.push(`  Missing evidence: ${finding.evidenceMissing.map(terminalText).join("; ")}`);
+    if (finding.conflictingEvidence.length) lines.push(`  Conflicting evidence: ${finding.conflictingEvidence.map((item) => terminalText(item.source)).join(", ")}`);
+    else if (finding.conflictsAssessed) lines.push("  Conflicts: assessed; no incompatible claims detected by this rule");
+    else lines.push("  Conflicts: not assessed by this rule");
+    if (finding.rule.falseNegativeLimitations.length) lines.push(`  Limitation: ${finding.rule.falseNegativeLimitations.map(terminalText).join("; ")}`);
     lines.push(`  Next: ${terminalText(finding.recommendation)}`);
   }
   if (report.recommendations.length) {
@@ -64,7 +77,16 @@ export function renderReport(report: Report, format: "text" | "json" | "sarif", 
 }
 
 export function renderError(error: CliError, format: "text" | "json" | "sarif"): string {
-  return format === "json" || format === "sarif" ? JSON.stringify({ schemaVersion: 1, error: { code: error.code, message: error.message } }, null, 2) : `Error [${terminalText(error.code)}]: ${terminalText(error.message)}`;
+  if (format === "sarif") return JSON.stringify({
+    version: "2.1.0",
+    $schema: "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+    runs: [{
+      tool: { driver: { name: "ContribReady", semanticVersion: "0.1.0" } },
+      results: [],
+      invocations: [{ executionSuccessful: false, toolExecutionNotifications: [{ level: "error", message: { text: `${terminalText(error.code)}: ${terminalText(error.message)}` } }] }],
+    }],
+  }, null, 2);
+  return format === "json" ? JSON.stringify({ schemaVersion: 1, error: { code: error.code, message: error.message } }, null, 2) : `Error [${terminalText(error.code)}]: ${terminalText(error.message)}`;
 }
 
 export function renderUsage(): string { return "Use contribready --help for usage."; }

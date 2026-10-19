@@ -1,7 +1,11 @@
 declare module "node:fs" {
-  export function lstatSync(path: string): { isFile(): boolean; isDirectory(): boolean; size: number };
-  export function readFileSync(path: string, encoding: "utf8"): string;
-  export function readdirSync(path: string, options: { withFileTypes: true }): readonly { name: string; isFile(): boolean; isDirectory(): boolean }[];
+  export const constants: { readonly O_RDONLY: number; readonly O_NOFOLLOW?: number };
+  export function closeSync(fd: number): void;
+  export function fstatSync(fd: number): { isFile(): boolean; size: number; dev: number; ino: number };
+  export function lstatSync(path: string): { isFile(): boolean; isDirectory(): boolean; isSymbolicLink(): boolean; size: number; dev: number; ino: number };
+  export function openSync(path: string, flags: number): number;
+  export function opendirSync(path: string): { readSync(): { name: string; isFile(): boolean; isDirectory(): boolean; isSymbolicLink(): boolean } | null; closeSync(): void };
+  export function readSync(fd: number, buffer: Uint8Array, offset: number, length: number, position: number | null): number;
 }
 declare module "node:path" {
   export function basename(path: string): string;
