@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Verify the opened file's device/inode matches its pre-open `lstat` snapshot before reading, preventing a path replacement from redirecting bounded evidence reads on platforms without `O_NOFOLLOW`.
 - Add an offline clean-consumer release-candidate test: pack CLI, install it with the packed Core artifact with lifecycle scripts disabled, and exercise the installed executable for text, JSON, SARIF, issue, and strict-exit behavior without sibling checkouts.
 - Text findings distinguish conflict checks that ran with no detected incompatible claims from rules that did not assess conflicts; show source-attributed runtime conflicts without resolving their authority.
 - Count local evidence limits in UTF-8 bytes, cap directory entries, and refuse symlink traversal; stream and byte-bound GitHub API responses before JSON parsing, validate canonical URLs, and include evidence limitations/coverage in reports.

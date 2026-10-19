@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../dist/index.js";
 import { renderReport } from "../dist/output.js";
+import { readBoundedFile } from "../dist/bounded-file.js";
 
 function invoke(args) {
   const out = [];
@@ -119,6 +120,27 @@ test("local Markdown accepts the exact per-file UTF-8 byte limit and replaces ma
   assert.equal(report.evidence.some((file) => file.path === "docs/at-limit.md" && Number(file.bytes) === 256 * 1024), true);
   assert.equal(report.evidence.some((file) => file.path === "docs/invalid-utf8.md"), true);
   assert.doesNotMatch(output.stdout, /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/);
+});
+
+test("bounded file reader rejects a file replaced between lstat and open before reading bytes", () => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-file-race-"));
+  const path = join(root, "README.md");
+  const replacement = join(root, "replacement.md");
+  const original = join(root, "original.md");
+  writeFileSync(path, "in-root file");
+  writeFileSync(replacement, "replacement file");
+  const operations = {
+    lstat: lstatSync,
+    open: (file, flags) => {
+      renameSync(file, original);
+      renameSync(replacement, file);
+      return openSync(file, flags);
+    },
+    fstat: fstatSync,
+    read: () => { throw new Error("reader must not consume a replaced file"); },
+    close: closeSync,
+  };
+  assert.equal(readBoundedFile(path, 64, operations), undefined);
 });
 
 test("hostile Unicode, percent, and spacing in filenames stay inert and SARIF-encoded", () => {

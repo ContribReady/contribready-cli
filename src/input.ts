@@ -1,8 +1,9 @@
-import { constants, closeSync, fstatSync, lstatSync, openSync, opendirSync, readSync } from "node:fs";
+import { lstatSync, opendirSync } from "node:fs";
 import { basename, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { buildEvidenceIndex, classifyEvidencePath } from "@contribready/core";
 import type { IssueEvidence, RepositoryEvidence } from "@contribready/core";
 import { CliError } from "./errors.js";
+import { readBoundedFile } from "./bounded-file.js";
 
 const MAX_FILE_BYTES = 256 * 1024;
 const MAX_FILES = 512;
@@ -14,26 +15,6 @@ function safePath(input: string): string {
   const absolute = resolve(input);
   if (!isAbsolute(absolute) || normalize(absolute) !== absolute) throw new CliError("INPUT", "Input path is invalid");
   return absolute;
-}
-
-function readBounded(path: string): { readonly text: string; readonly bytes: number } | undefined {
-  let descriptor: number | undefined;
-  try {
-    const noFollow = constants.O_NOFOLLOW ?? 0;
-    descriptor = openSync(path, constants.O_RDONLY | noFollow);
-    const stat = fstatSync(descriptor);
-    if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return undefined;
-    const buffer = new Uint8Array(MAX_FILE_BYTES + 1);
-    let bytes = 0;
-    while (bytes < buffer.length) {
-      const count = readSync(descriptor, buffer, bytes, buffer.length - bytes, null);
-      if (count === 0) break;
-      bytes += count;
-    }
-    if (bytes > MAX_FILE_BYTES) return undefined;
-    return { text: new TextDecoder().decode(buffer.subarray(0, bytes)), bytes };
-  } catch { return undefined; }
-  finally { if (descriptor !== undefined) closeSync(descriptor); }
 }
 
 export function loadRepository(input: string): RepositoryEvidence {
@@ -85,7 +66,7 @@ function discover(root: string, current: string, files: Record<string, string>, 
       const relativePath = normalize(relative(root, absolute));
       if (!classifyEvidencePath(relativePath)) { state.skipped += 1; continue; }
       state.visited += 1;
-      const value = readBounded(absolute);
+      const value = readBoundedFile(absolute, MAX_FILE_BYTES);
       if (value === undefined || state.bytes + value.bytes > MAX_TOTAL_BYTES) { state.skipped += 1; continue; }
       files[relativePath] = value.text;
       state.bytes += value.bytes;
@@ -95,7 +76,7 @@ function discover(root: string, current: string, files: Record<string, string>, 
 
 export function loadIssue(input: string): IssueEvidence {
   const path = safePath(input);
-  const value = readBounded(path);
+  const value = readBoundedFile(path, MAX_FILE_BYTES);
   if (value === undefined) throw new CliError("INPUT", `Issue Markdown is missing, unreadable, not a regular file, or larger than ${MAX_FILE_BYTES} bytes: ${input}`);
   const lines = value.text.split(/\r?\n/);
   const heading = lines.find((line) => /^#\s+/.test(line));
