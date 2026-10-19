@@ -58,13 +58,15 @@ Phase 6 applies contribution rules for CONTRIBUTING.md, pull-request workflow, r
 
 Phase 7 applies six local Markdown issue-readiness rules. `issue --strict` returns exit code `1` when the issue is missing required actionable evidence.
 
-Phase 8 reports scoring version, category breakdowns, unknown/not-applicable counts, and deterministic prioritized recommendations from Core. The CLI does not recalculate scores.
+Phase 8 reports scoring version 2, category breakdowns, determinate coverage, unknown/not-applicable counts, and deterministic prioritized recommendations from Core. The CLI does not recalculate scores. Read the percentage together with coverage: it is only the result produced by documented rules against available evidence, not an objective repository-quality or contributor-success metric.
 
 Phase 9 adds opt-in GitHub retrieval for canonical HTTPS repository and issue URLs. Local paths never contact GitHub. Remote requests use the GitHub REST API, an optional `GITHUB_TOKEN`, bounded tree/blob selection, a ten-second request timeout, and stable errors for authentication, private/unavailable resources, rate limits, and network failures. Tokens are sent only in request headers and are never included in reports or error messages. GitHub remains a CLI adapter; it is not a separate repository.
 
-Phase 10 hardens local and remote inputs: terminal control characters are removed from human output, local/remote size limits are enforced, oversized credentials are rejected, redirects are refused, and security abuse cases are covered by tests.
+Phase 10 hardens local and remote inputs: local resource accounting uses UTF-8 bytes and bounded directory enumeration; remote response bodies are byte-bounded before parsing; canonical GitHub URLs, redirect refusal, token bounds, terminal-control sanitization, and stable errors are tested. The proposed remediation keeps one deadline active through response-body consumption and cancels stalled readers. Directory symlink/junction tests may skip where the platform/account cannot create links; file-replacement races and the complete multi-platform hostile-input matrix still need CI verification.
 
-Phase 15 adds opt-in SARIF 2.1.0 output with stable rule IDs and error/warning/note mappings. It also normalizes safe GitHub issue metadata without changing readiness rules. Local and remote audits remain static; no target execution is introduced.
+Phase 15 adds opt-in SARIF 2.1.0 output with stable rule IDs and error/warning/note mappings. The proposed remediation validates generated SARIF—including error output—against the vendored OASIS Errata 01 schema offline. It also normalizes safe GitHub issue metadata without changing readiness rules. Local and remote audits remain static; no target execution is introduced.
+
+The 2026-10-19 local review branch adds a labeled 25-case product evaluation matrix in the main repository and regression tests for deadline, resource, encoding, and output-schema boundaries. These are synthetic regression expectations, not external calibration or full cross-platform verification.
 
 For local development, use the sibling checkout instructions above. The published package flow is not yet available because neither `@contribready/core` nor `@contribready/cli` is published.
 

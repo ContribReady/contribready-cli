@@ -7,10 +7,21 @@ test("parses only canonical GitHub issue URLs", () => {
   assert.deepEqual(parseRepositoryUrl("https://github.com/acme/project"), { owner: "acme", repository: "project" });
   assert.equal(parseIssueUrl("https://example.com/acme/project/issues/42"), null);
   assert.equal(parseIssueUrl("https://github.com/acme/project/pull/42"), null);
+  for (const url of [
+    "https://github.com/acme/project/",
+    "https://github.com/acme/project?tab=readme",
+    "https://github.com/acme/project#readme",
+    "https://user:password@github.com/acme/project",
+    "https://github.com:443/acme/project",
+    "https://github.com/acme/project/issues/42?plain=1",
+  ]) {
+    assert.equal(parseRepositoryUrl(url), null, `repository URL should be rejected: ${url}`);
+    if (url.includes("/issues/")) assert.equal(parseIssueUrl(url), null, `issue URL should be rejected: ${url}`);
+  }
 });
 
 function response(status, value, headers = {}) {
-  return { status, headers: { get: (name) => headers[name.toLowerCase()] ?? null }, json: async () => value };
+  return { status, headers: { get: (name) => headers[name.toLowerCase()] ?? null }, text: async () => JSON.stringify(value) };
 }
 
 test("GitHub issue retrieval is normalized and never exposes the token", async () => {
@@ -22,6 +33,8 @@ test("GitHub issue retrieval is normalized and never exposes the token", async (
   assert.deepEqual(issue, { title: "Fix parser", body: "Steps and acceptance criteria", source: "https://github.com/acme/project/issues/42" });
   assert.equal(requested.url, "https://api.github.com/repos/acme/project/issues/42");
   assert.equal(requested.init.headers.Authorization, "Bearer secret-token");
+  assert.equal(requested.init.redirect, "error");
+  assert.equal(Object.keys(requested.init.headers).some((key) => /token/i.test(key) && key !== "Authorization"), false);
 });
 
 test("GitHub repository retrieval reads only classified bounded evidence", async () => {
@@ -32,6 +45,9 @@ test("GitHub repository retrieval reads only classified bounded evidence", async
     if (url.endsWith("/repos/acme/project")) return response(200, { default_branch: "main" });
     if (url.includes("/git/trees/main")) return response(200, { tree: [
       { path: "README.md", type: "blob", sha: "readme" },
+      { path: "../README.md", type: "blob", sha: "traversal" },
+      { path: "/README.md", type: "blob", sha: "absolute" },
+      { path: "README.md\\evil", type: "blob", sha: "backslash" },
       { path: "src/secret.ts", type: "blob", sha: "secret" },
       { path: "CONTRIBUTING.md", type: "blob", sha: "contrib" },
     ] });
@@ -71,4 +87,66 @@ test("GitHub rejects oversized JSON even without a content-length header", async
     () => loadGithubIssue("https://github.com/acme/project/issues/42", { token: secret, fetcher: async () => response(200, { title: "x", body: "x".repeat(4 * 1024 * 1024) }) }),
     (error) => error.message.includes("bounded response") && !error.message.includes(secret),
   );
+});
+
+test("GitHub rejects malformed JSON and oversized multibyte issue text", async () => {
+  await assert.rejects(
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", { fetcher: async () => ({ status: 200, text: async () => "{not-json" }) }),
+    /invalid JSON/,
+  );
+  await assert.rejects(
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", { fetcher: async () => response(200, { title: "x", body: "😀".repeat(70_000) }) }),
+    /bounded title\/body/,
+  );
+  const invalidUtf8 = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([0xff])); controller.close(); } });
+  await assert.rejects(
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", { token: "never-print", fetcher: async () => ({ status: 200, body: invalidUtf8, text: async () => "" }) }),
+    (error) => error.code === "NETWORK" && /invalid UTF-8/.test(error.message) && !error.message.includes("never-print"),
+  );
+});
+
+test("GitHub bounds streamed response bytes before parsing", async () => {
+  const payload = new TextEncoder().encode(JSON.stringify({ title: "x", body: "x".repeat(4 * 1024 * 1024) }));
+  let cancelled = false;
+  const body = new ReadableStream({
+    start(controller) { controller.enqueue(payload); },
+    cancel() { cancelled = true; },
+  });
+  await assert.rejects(
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", { fetcher: async () => ({ status: 200, body, text: async () => "" }) }),
+    /bounded response/,
+  );
+  assert.equal(cancelled, true);
+});
+
+test("GitHub request deadline covers stalled response headers", async () => {
+  let aborted = false;
+  const token = "do-not-print-this-token";
+  await assert.rejects(
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", {
+      token,
+      fetcher: async (_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => { aborted = true; reject(new Error(token)); }, { once: true });
+      }),
+    }),
+    (error) => error.code === "NETWORK" && /timed out/.test(error.message) && !error.message.includes(token),
+  );
+  assert.equal(aborted, true);
+});
+
+test("GitHub request deadline covers stalled body streaming and cancels the reader", async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode('{"title":"x","body":"')); },
+    pull() { return new Promise(() => {}); },
+    cancel() { cancelled = true; },
+  });
+  await assert.rejects(
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", {
+      token: "do-not-print-this-token",
+      fetcher: async () => ({ status: 200, body, text: async () => "" }),
+    }),
+    (error) => error.code === "NETWORK" && /timed out/.test(error.message) && !error.message.includes("do-not-print-this-token"),
+  );
+  assert.equal(cancelled, true);
 });
