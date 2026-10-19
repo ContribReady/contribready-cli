@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Text findings distinguish conflict checks that ran with no detected incompatible claims from rules that did not assess conflicts; show source-attributed runtime conflicts without resolving their authority.
 - Count local evidence limits in UTF-8 bytes, cap directory entries, and refuse symlink traversal; stream and byte-bound GitHub API responses before JSON parsing, validate canonical URLs, and include evidence limitations/coverage in reports.
 - Keep the ten-second GitHub deadline active through streamed body consumption, cancel stalled readers, and keep timeout errors stable and credential-free.
 - Validate SARIF output and SARIF-formatted errors against a pinned OASIS 2.1.0 Errata 01 schema with offline Ajv draft-04 tests; cover empty/mixed outcomes and hostile Windows/POSIX/Unicode paths.

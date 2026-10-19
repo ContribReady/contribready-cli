@@ -64,6 +64,7 @@ export function renderReport(report: Report, format: "text" | "json" | "sarif", 
     if (finding.evidence.length) lines.push(`  Evidence: ${finding.evidence.map((item) => terminalText(item.source)).join(", ")}`);
     if (finding.evidenceMissing.length) lines.push(`  Missing evidence: ${finding.evidenceMissing.map(terminalText).join("; ")}`);
     if (finding.conflictingEvidence.length) lines.push(`  Conflicting evidence: ${finding.conflictingEvidence.map((item) => terminalText(item.source)).join(", ")}`);
+    else if (finding.conflictsAssessed) lines.push("  Conflicts: assessed; no incompatible claims detected by this rule");
     else lines.push("  Conflicts: not assessed by this rule");
     if (finding.rule.falseNegativeLimitations.length) lines.push(`  Limitation: ${finding.rule.falseNegativeLimitations.map(terminalText).join("; ")}`);
     lines.push(`  Next: ${terminalText(finding.recommendation)}`);

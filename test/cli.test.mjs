@@ -38,6 +38,39 @@ test("audit emits deterministic JSON without executing repository code", () => {
   assert.equal(report.findings.length, 14);
 });
 
+test("runtime conflicts stay unknown and text distinguishes assessed from unassessed checks", () => {
+  const conflictingRoot = mkdtempSync(join(tmpdir(), "contribready-runtime-conflict-"));
+  writeFileSync(join(conflictingRoot, "README.md"), "Install with Node.js 20.");
+  writeFileSync(join(conflictingRoot, "CONTRIBUTING.md"), "Use Node.js 18 to run the checks.");
+
+  const json = JSON.parse(invoke(["audit", conflictingRoot, "--format", "json"]).stdout);
+  const setup = json.findings.find((finding) => finding.rule.id === "CR-SETUP-002");
+  assert.equal(setup.outcome, "unknown");
+  assert.equal(setup.conflictsAssessed, true);
+  assert.deepEqual(setup.conflictingEvidence.map((item) => [item.source, item.details.version]), [
+    ["CONTRIBUTING.md", "18"],
+    ["README.md", "20"],
+  ]);
+
+  const conflictText = invoke(["audit", conflictingRoot, "--format", "text"]).stdout;
+  assert.match(conflictText, /Conflicting evidence: CONTRIBUTING\.md, README\.md/);
+
+  const conflictSarif = JSON.parse(invoke(["audit", conflictingRoot, "--format", "sarif"]).stdout);
+  const sarifSetup = conflictSarif.runs[0].results.find((finding) => finding.ruleId === "CR-SETUP-002");
+  assert.equal(sarifSetup.properties.outcome, "unknown");
+  assert.equal(sarifSetup.properties.conflictsAssessed, true);
+  assert.deepEqual(sarifSetup.properties.conflictingEvidence.map((item) => [item.source, item.details.version]), [
+    ["CONTRIBUTING.md", "18"],
+    ["README.md", "20"],
+  ]);
+
+  const consistentRoot = mkdtempSync(join(tmpdir(), "contribready-runtime-consistent-"));
+  writeFileSync(join(consistentRoot, "README.md"), "Install with Node.js 20.");
+  writeFileSync(join(consistentRoot, "CONTRIBUTING.md"), "Use Node.js 20 to run the checks.");
+  const consistentText = invoke(["audit", consistentRoot, "--format", "text"]).stdout;
+  assert.match(consistentText, /Conflicts: assessed; no incompatible claims detected by this rule/);
+});
+
 test("audit discovers evidence files and skips source/dependency/build directories", () => {
   const root = mkdtempSync(join(tmpdir(), "contribready-evidence-"));
   writeFileSync(join(root, "README.md"), "Read me");
