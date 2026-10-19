@@ -23,7 +23,8 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/contribready-core
           path: contribready-core
-          ref: main
+          # Integration candidate for this review; switch to main after Core is merged.
+          ref: audit/readiness-review-20261018-core
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
