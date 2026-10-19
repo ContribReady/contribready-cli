@@ -21,7 +21,7 @@ The npm packages are not published yet, so the `npx` package-install route is no
 ```bash
 npm ci --prefix contribready-core
 npm run build --prefix contribready-core
-npm pack --prefix contribready-core --pack-destination .
+npm pack ./contribready-core --pack-destination .
 npm install --prefix contribready-cli --no-save --package-lock=false --ignore-scripts --no-audit --no-fund ./contribready-core-0.1.0.tgz
 npm run build --prefix contribready-cli
 node contribready-cli/dist/index.js audit ./repository
