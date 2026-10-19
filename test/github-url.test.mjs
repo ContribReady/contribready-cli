@@ -21,7 +21,15 @@ test("parses only canonical GitHub issue URLs", () => {
 });
 
 function response(status, value, headers = {}) {
-  return { status, headers: { get: (name) => headers[name.toLowerCase()] ?? null }, text: async () => JSON.stringify(value) };
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const body = new ReadableStream({ start(controller) { controller.enqueue(bytes); controller.close(); } });
+  return { status, headers: { get: (name) => headers[name.toLowerCase()] ?? null }, body, text: async () => JSON.stringify(value) };
+}
+
+function responseText(status, text) {
+  const bytes = new TextEncoder().encode(text);
+  const body = new ReadableStream({ start(controller) { controller.enqueue(bytes); controller.close(); } });
+  return { status, body, text: async () => text };
 }
 
 test("GitHub issue retrieval is normalized and never exposes the token", async () => {
@@ -91,7 +99,7 @@ test("GitHub rejects oversized JSON even without a content-length header", async
 
 test("GitHub rejects malformed JSON and oversized multibyte issue text", async () => {
   await assert.rejects(
-    () => loadGithubIssue("https://github.com/acme/project/issues/42", { fetcher: async () => ({ status: 200, text: async () => "{not-json" }) }),
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", { fetcher: async () => responseText(200, "{not-json") }),
     /invalid JSON/,
   );
   await assert.rejects(
@@ -103,6 +111,17 @@ test("GitHub rejects malformed JSON and oversized multibyte issue text", async (
     () => loadGithubIssue("https://github.com/acme/project/issues/42", { token: "never-print", fetcher: async () => ({ status: 200, body: invalidUtf8, text: async () => "" }) }),
     (error) => error.code === "NETWORK" && /invalid UTF-8/.test(error.message) && !error.message.includes("never-print"),
   );
+});
+
+test("GitHub rejects responses without a readable body instead of buffering unbounded text", async () => {
+  let textCalled = false;
+  await assert.rejects(
+    () => loadGithubIssue("https://github.com/acme/project/issues/42", {
+      fetcher: async () => ({ status: 200, text: async () => { textCalled = true; return "x".repeat(4 * 1024 * 1024); } }),
+    }),
+    (error) => error.code === "NETWORK" && /body was unavailable for bounded reading/.test(error.message),
+  );
+  assert.equal(textCalled, false);
 });
 
 test("GitHub bounds streamed response bytes before parsing", async () => {

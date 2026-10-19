@@ -109,11 +109,7 @@ function withAbort<T>(operation: Promise<T>, signal: AbortSignal, cancel?: () =>
 
 async function readResponseText(response: GitHubResponse, signal: AbortSignal): Promise<string> {
   const reader = response.body?.getReader();
-  if (!reader) {
-    const text = await withAbort(response.text(), signal);
-    if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) throw new CliError("NETWORK", "GitHub response exceeded the bounded response limit");
-    return text;
-  }
+  if (!reader) throw new CliError("NETWORK", "GitHub response body was unavailable for bounded reading");
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
