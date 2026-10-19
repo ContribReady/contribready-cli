@@ -20,15 +20,16 @@ The npm packages are not published yet, so the `npx` package-install route is no
 
 ```bash
 npm ci --prefix contribready-core
-npm ci --prefix contribready-cli
 npm run build --prefix contribready-core
+npm pack --prefix contribready-core --pack-destination .
+npm install --prefix contribready-cli --no-save --package-lock=false --ignore-scripts --no-audit --no-fund ./contribready-core-0.1.0.tgz
 npm run build --prefix contribready-cli
 node contribready-cli/dist/index.js audit ./repository
 node contribready-cli/dist/index.js audit ./repository --format json
 node contribready-cli/dist/index.js issue ./issue.md --strict
 ```
 
-The CLI checkout expects the Core checkout at `../contribready-core`; Core is built before the CLI so its local package link resolves correctly. Once both packages are published, the standard `npx @contribready/cli ...` instructions can replace these source-checkout steps.
+The Core package is not published, so `npm ci` in the CLI checkout cannot resolve it yet. Pack Core locally and install that tarball into the CLI checkout as shown above; this mirrors the release-candidate CI path without publishing. Once both packages are published, the standard `npx @contribready/cli ...` instructions can replace these source-checkout steps.
 
 The default audit is local-first and static: it reads bounded contributor-facing evidence and does not run the target repository, install its dependencies, or contact GitHub.
 

@@ -73,11 +73,15 @@ function discover(root: string, current: string, files: Record<string, string>, 
     for (const entry of entries) {
       if (state.visited >= MAX_FILES || state.bytes >= MAX_TOTAL_BYTES) { state.truncated = true; return; }
       const name = String(entry.name);
-      if (entry.isSymbolicLink()) { state.skipped += 1; continue; }
-      if (entry.isDirectory() && SKIP_DIRECTORIES.has(name)) { state.skipped += 1; continue; }
       const absolute = join(current, name);
-      if (entry.isDirectory()) { discover(root, absolute, files, state, depth + 1); continue; }
-      if (!entry.isFile()) { state.skipped += 1; continue; }
+      let stat;
+      try { stat = lstatSync(absolute); } catch { state.skipped += 1; continue; }
+      // Windows junctions can be reported as directories by Dirent even though
+      // lstat identifies the reparse point. Never recurse through such entries.
+      if (entry.isSymbolicLink() || stat.isSymbolicLink()) { state.skipped += 1; continue; }
+      if (entry.isDirectory() && SKIP_DIRECTORIES.has(name)) { state.skipped += 1; continue; }
+      if (entry.isDirectory() && stat.isDirectory()) { discover(root, absolute, files, state, depth + 1); continue; }
+      if (!entry.isFile() || !stat.isFile()) { state.skipped += 1; continue; }
       const relativePath = normalize(relative(root, absolute));
       if (!classifyEvidencePath(relativePath)) { state.skipped += 1; continue; }
       state.visited += 1;
