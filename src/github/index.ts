@@ -9,7 +9,6 @@ export interface GitHubResponse {
   readonly status: number;
   readonly headers?: { get(name: string): string | null };
   readonly body?: ReadableStream<Uint8Array> | null;
-  text(): Promise<string>;
 }
 
 export type GitHubFetch = (input: string, init?: { readonly headers?: Readonly<Record<string, string>>; readonly signal?: AbortSignal; readonly redirect?: "error" }) => Promise<GitHubResponse>;
