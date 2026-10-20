@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added the public one-command npm quick start and explicit Node.js 20+, package-content, repository, and public-access metadata for the first registry release.
+- Updated the development-only SARIF schema validator from Ajv 8.17.1 to 8.20.0 to resolve the current moderate ReDoS advisory.
 - Verify the opened file's device/inode matches its pre-open `lstat` snapshot before reading, preventing a path replacement from redirecting bounded evidence reads on platforms without `O_NOFOLLOW`.
 - Add an offline clean-consumer release-candidate test: pack CLI, install it with the packed Core artifact with lifecycle scripts disabled, and exercise the installed executable for text, JSON, SARIF, issue, and strict-exit behavior without sibling checkouts.
 - Text findings distinguish conflict checks that ran with no detected incompatible claims from rules that did not assess conflicts; show source-attributed runtime conflicts without resolving their authority.
