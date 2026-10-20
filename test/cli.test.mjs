@@ -72,6 +72,24 @@ test("runtime conflicts stay unknown and text distinguishes assessed from unasse
   assert.match(consistentText, /Conflicts: assessed; no incompatible claims detected by this rule/);
 });
 
+test("instruction verification separates documentation, metadata consistency, and unrun commands", () => {
+  const root = mkdtempSync(join(tmpdir(), "contribready-instruction-status-"));
+  writeFileSync(join(root, "CONTRIBUTING.md"), "Install with pnpm i, then run pnpm test.");
+  writeFileSync(join(root, "package.json"), JSON.stringify({ packageManager: "pnpm@12.14.0" }));
+  writeFileSync(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'");
+
+  const json = JSON.parse(invoke(["audit", root, "--format", "json"]).stdout);
+  const jsonSetup = json.findings.find((finding) => finding.rule.id === "CR-SETUP-003");
+  assert.deepEqual(jsonSetup.instructionVerification, { documentation: "documented", metadataConsistency: "consistent", execution: "not-run" });
+
+  const text = invoke(["audit", root, "--format", "text"]).stdout;
+  assert.match(text, /Instructions: documented; metadata consistent; execution not-run/);
+
+  const sarif = JSON.parse(invoke(["audit", root, "--format", "sarif"]).stdout);
+  const sarifSetup = sarif.runs[0].results.find((finding) => finding.ruleId === "CR-SETUP-003");
+  assert.deepEqual(sarifSetup.properties.instructionVerification, jsonSetup.instructionVerification);
+});
+
 test("audit discovers evidence files and skips source/dependency/build directories", () => {
   const root = mkdtempSync(join(tmpdir(), "contribready-evidence-"));
   writeFileSync(join(root, "README.md"), "Read me");
@@ -147,13 +165,13 @@ test("hostile Unicode, percent, and spacing in filenames stay inert and SARIF-en
   const root = mkdtempSync(join(tmpdir(), "contribready-hostile-name-"));
   const docs = join(root, "docs");
   mkdirSync(docs);
-  const name = "guide 雪% name.md";
+  const name = "contributing 雪% name.md";
   writeFileSync(join(docs, name), "Node.js 20. Run npm ci. Run npm test.");
   const result = invoke(["audit", root, "--format", "sarif"]);
   assert.equal(result.code, 0);
   const sarif = JSON.parse(result.stdout);
   const locations = sarif.runs[0].results.flatMap((finding) => finding.locations ?? []);
-  assert.equal(locations.some((location) => location.physicalLocation.artifactLocation.uri === "docs/guide%20%E9%9B%AA%25%20name.md"), true);
+  assert.equal(locations.some((location) => location.physicalLocation.artifactLocation.uri === "docs/contributing%20%E9%9B%AA%25%20name.md"), true);
 });
 
 test("repository byte limits count UTF-8 bytes rather than UTF-16 code units", () => {

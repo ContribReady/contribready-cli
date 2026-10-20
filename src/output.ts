@@ -36,7 +36,7 @@ export function renderSarif(report: Report, input: string, extra: Record<string,
       level: sarifLevel(finding.outcome),
       message: { text: finding.message },
       ...(path ? { locations: [{ physicalLocation: { artifactLocation: { uri: sarifUri(path) } } }] } : {}),
-      properties: { outcome: finding.outcome, area: finding.rule.area, recommendation: finding.recommendation, evidenceMissing: finding.evidenceMissing, conflictingEvidence: finding.conflictingEvidence, conflictsAssessed: finding.conflictsAssessed },
+      properties: { outcome: finding.outcome, area: finding.rule.area, recommendation: finding.recommendation, evidenceMissing: finding.evidenceMissing, conflictingEvidence: finding.conflictingEvidence, conflictsAssessed: finding.conflictsAssessed, ...(finding.instructionVerification ? { instructionVerification: finding.instructionVerification } : {}) },
     };
   });
   return JSON.stringify({
@@ -66,6 +66,10 @@ export function renderReport(report: Report, format: "text" | "json" | "sarif", 
     if (finding.conflictingEvidence.length) lines.push(`  Conflicting evidence: ${finding.conflictingEvidence.map((item) => terminalText(item.source)).join(", ")}`);
     else if (finding.conflictsAssessed) lines.push("  Conflicts: assessed; no incompatible claims detected by this rule");
     else lines.push("  Conflicts: not assessed by this rule");
+    if (finding.instructionVerification) {
+      const check = finding.instructionVerification;
+      lines.push(`  Instructions: ${terminalText(check.documentation)}; metadata ${terminalText(check.metadataConsistency)}; execution ${terminalText(check.execution)}`);
+    }
     if (finding.rule.falseNegativeLimitations.length) lines.push(`  Limitation: ${finding.rule.falseNegativeLimitations.map(terminalText).join("; ")}`);
     lines.push(`  Next: ${terminalText(finding.recommendation)}`);
   }
